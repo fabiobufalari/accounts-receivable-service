@@ -1,0 +1,68 @@
+# =========================================
+# Server Configuration
+# =========================================
+server:
+  port: 8089 # <<<--- Escolha uma porta diferente / Choose a different port
+
+# =========================================
+# Spring Boot Application Configuration
+# =========================================
+spring:
+  application:
+    name: accounts-receivable-service # Nome do serviço
+
+  # =========================================
+  # Datasource Configuration (PostgreSQL)
+  # =========================================
+  datasource:
+    url: jdbc:postgresql://localhost:5432/receivabledb # <<<-- BD Dedicado (Recomendado)
+    username: postgres
+    password: postgres
+
+  # =========================================
+  # JPA & Hibernate Configuration
+  # =========================================
+  jpa:
+    hibernate:
+      ddl-auto: update
+    # show-sql: true # Mantenha descomentado para depuração
+    properties:
+      hibernate:
+        format_sql: true
+        # --- ESPECIFICAR DIALETO MANUALMENTE ---
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+# =========================================
+# External Service URLs
+# =========================================
+auth:
+  service:
+    url: ${AUTH_SERVICE_URL:http://localhost:8083/api} # <<<--- URL do Auth Service
+
+# =========================================
+# JWT Configuration
+# =========================================
+jwt:
+  secret: ${JWT_SECRET_KEY:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970!} # <<<--- MESMA CHAVE SECRETA
+
+# =========================================
+# Logging Configuration (Example)
+# =========================================
+logging:
+  level:
+    org.springframework.web: INFO
+    org.springframework.security: INFO
+    com.bufalari.receivable: DEBUG # Seu pacote
+    org.hibernate.SQL: DEBUG
+
+# =========================================
+# Swagger/OpenAPI Configuration (Example)
+# =========================================
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+  default-consumes-media-type: application/json
+  default-produces-media-type: application/json

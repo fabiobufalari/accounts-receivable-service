@@ -1,0 +1,21 @@
+# Path: src/test/resources/application-test.yml
+
+spring:
+  # H2 Config
+  datasource:
+    url: jdbc:h2:mem:receivabledb_test;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    driverClassName: org.h2.Driver
+    username: sa
+    password: password
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+
+# Dummy URLs/Secrets for tests
+auth:
+  service:
+    url: http://localhost:9999 # Dummy URL
+
+jwt:
+  secret: some-long-test-secret-key-receivable # Test secret
