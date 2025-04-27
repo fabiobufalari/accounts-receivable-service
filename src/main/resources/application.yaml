@@ -2,34 +2,26 @@
 # Server Configuration
 # =========================================
 server:
-  port: 8089 # <<<--- Escolha uma porta diferente / Choose a different port
+  port: 8089 # Porta deste serviço
 
 # =========================================
 # Spring Boot Application Configuration
 # =========================================
 spring:
   application:
-    name: accounts-receivable-service # Nome do serviço
-
-  # =========================================
-  # Datasource Configuration (PostgreSQL)
-  # =========================================
+    name: accounts-receivable-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/receivabledb # <<<-- BD Dedicado (Recomendado)
+    url: jdbc:postgresql://localhost:5432/buildingDB # <<< BANCO CENTRALIZADO
     username: postgres
     password: postgres
-
-  # =========================================
-  # JPA & Hibernate Configuration
-  # =========================================
+    driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
       ddl-auto: update
-    # show-sql: true # Mantenha descomentado para depuração
+    show-sql: true
     properties:
       hibernate:
         format_sql: true
-        # --- ESPECIFICAR DIALETO MANUALMENTE ---
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
 # =========================================
@@ -37,26 +29,28 @@ spring:
 # =========================================
 auth:
   service:
-    url: ${AUTH_SERVICE_URL:http://localhost:8083/api} # <<<--- URL do Auth Service
+    url: ${AUTH_SERVICE_URL:http://localhost:8083/api} # URL do Authentication Service
 
 # =========================================
-# JWT Configuration
+# JWT Configuration (Este serviço VALIDA)
 # =========================================
-jwt:
-  secret: ${JWT_SECRET_KEY:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970!} # <<<--- MESMA CHAVE SECRETA
+security:
+  jwt:
+    token:
+      secret-key: ${JWT_SECRET_KEY:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970!} # <<< CHAVE IDÊNTICA
 
 # =========================================
-# Logging Configuration (Example)
+# Logging Configuration
 # =========================================
 logging:
   level:
     org.springframework.web: INFO
     org.springframework.security: INFO
-    com.bufalari.receivable: DEBUG # Seu pacote
+    com.bufalari.receivable: DEBUG # Pacote raiz deste serviço
     org.hibernate.SQL: DEBUG
 
 # =========================================
-# Swagger/OpenAPI Configuration (Example)
+# Swagger/OpenAPI Configuration
 # =========================================
 springdoc:
   api-docs:
@@ -66,3 +60,15 @@ springdoc:
     operations-sorter: method
   default-consumes-media-type: application/json
   default-produces-media-type: application/json
+
+# =========================================
+# Actuator Configuration
+# =========================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+  endpoint:
+    health:
+      show-details: when_authorized
