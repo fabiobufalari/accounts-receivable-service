@@ -1,17 +1,18 @@
-// Path: src/main/java/com/bufalari/receivable/client/AuthServiceClient.java
-package com.bufalari.receivable.client; // <<<--- PACOTE CORRETO
+package com.bufalari.receivable.client; // Pacote correto
 
-import com.bufalari.receivable.dto.UserDetailsDTO; // Import DTO from correct package
+import com.bufalari.receivable.dto.UserDetailsDTO; // Pacote correto
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 
-@FeignClient(name = "auth-service-client-receivable", url = "${auth.service.url}") // Unique name
+@FeignClient(name = "auth-service-client-receivable", url = "${auth.service.url}") // Nome único, URL via application.yml
 public interface AuthServiceClient {
 
-    @GetMapping("/api/users/username/{username}") // VERIFY Endpoint
+    // <<< AJUSTE NO PATH >>>
+    @GetMapping("/users/username/{username}")
     UserDetailsDTO getUserByUsername(@PathVariable("username") String username);
 
-    @GetMapping("/api/users/{id}") // VERIFY Endpoint
+    // <<< AJUSTE NO PATH >>>
+    @GetMapping("/users/{id}")
     UserDetailsDTO getUserById(@PathVariable("id") String userId);
 }
