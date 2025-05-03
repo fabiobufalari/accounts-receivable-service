@@ -1,4 +1,8 @@
 # =========================================
+# MS accounts-receivable-service
+# =========================================
+
+# =========================================
 # Server Configuration
 # =========================================
 server:
@@ -11,9 +15,9 @@ spring:
   application:
     name: accounts-receivable-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/buildingDB # <<< BANCO CENTRALIZADO
-    username: postgres
-    password: postgres
+    url: ${DATASOURCE_URL} # <<< BANCO CENTRALIZADO
+    username: ${DATASOURCE_USERNAME_PROD}
+    password: ${DATASOURCE_PASSWORD_PROD}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -29,7 +33,7 @@ spring:
 # =========================================
 auth:
   service:
-    url: ${AUTH_SERVICE_URL:http://localhost:8083/api} # URL do Authentication Service
+    url: ${AUTH_SERVICE_URL} # URL do Authentication Service
 
 # =========================================
 # JWT Configuration (Este serviço VALIDA)
@@ -37,7 +41,7 @@ auth:
 security:
   jwt:
     token:
-      secret-key: ${JWT_SECRET_KEY:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970!} # <<< CHAVE IDÊNTICA
+      secret-key: ${JWT_SECRET_KEY} # <<< CHAVE IDÊNTICA
 
 # =========================================
 # Logging Configuration
