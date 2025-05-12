@@ -1,4 +1,3 @@
-// Path: src/main/java/com/bufalari/receivable/service/ReceivableService.java
 package com.bufalari.receivable.service;
 
 import com.bufalari.receivable.converter.ReceivableConverter;
@@ -18,18 +17,18 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.UUID; // <<<--- IMPORT UUID
 import java.util.stream.Collectors;
 
 /**
- * Service layer for managing Accounts Receivable.
+ * Service layer for managing Accounts Receivable (with UUID IDs).
  * Handles CRUD operations and business logic for receivables.
- * Camada de serviço para gerenciamento de Contas a Receber.
+ * Camada de serviço para gerenciamento de Contas a Receber (com IDs UUID).
  * Trata operações CRUD e lógica de negócio para contas a receber.
  */
 @Service
-@RequiredArgsConstructor
-@Transactional
+@RequiredArgsConstructor // Injects final fields via constructor
+@Transactional // Default transaction propagation
 public class ReceivableService {
 
     private static final Logger log = LoggerFactory.getLogger(ReceivableService.class);
@@ -40,34 +39,42 @@ public class ReceivableService {
     /**
      * Creates a new receivable record.
      * Cria um novo registro de conta a receber.
-     * @param receivableDTO DTO containing receivable data. / DTO contendo dados da conta a receber.
-     * @return The created ReceivableDTO. / O ReceivableDTO criado.
+     * @param receivableDTO DTO containing receivable data. ID must be null. / DTO contendo dados da conta a receber. ID deve ser nulo.
+     * @return The created ReceivableDTO with its generated UUID. / O ReceivableDTO criado com seu UUID gerado.
      */
     public ReceivableDTO createReceivable(ReceivableDTO receivableDTO) {
         log.info("Creating new receivable for client ID: {} and project ID: {}", receivableDTO.getClientId(), receivableDTO.getProjectId());
-        // Basic validation (could be expanded)
+        if (receivableDTO.getId() != null) {
+            log.warn("Attempted to create a receivable with an existing ID ({}). ID will be ignored.", receivableDTO.getId());
+            receivableDTO.setId(null); // Ensure ID is null for creation
+        }
+        // Basic validation (could be expanded with Client/Project existence check via Feign)
         if (receivableDTO.getClientId() == null || receivableDTO.getProjectId() == null) {
-             throw new IllegalArgumentException("Client ID and Project ID are required to create a receivable.");
+            throw new IllegalArgumentException("Client ID and Project ID are required to create a receivable.");
         }
         ReceivableEntity entity = receivableConverter.dtoToEntity(receivableDTO);
+        // Entity's @PrePersist handles default status and amountReceived
         ReceivableEntity savedEntity = receivableRepository.save(entity);
         log.info("Receivable created successfully with ID: {}", savedEntity.getId());
         return receivableConverter.entityToDTO(savedEntity);
     }
 
     /**
-     * Retrieves a receivable by its unique ID.
-     * Recupera uma conta a receber pelo seu ID único.
-     * @param id The ID of the receivable. / O ID da conta a receber.
+     * Retrieves a receivable by its unique UUID.
+     * Recupera uma conta a receber pelo seu UUID único.
+     * @param id The UUID of the receivable. / O UUID da conta a receber.
      * @return The found ReceivableDTO. / O ReceivableDTO encontrado.
      * @throws ResourceNotFoundException if not found. / Se não encontrado.
      */
     @Transactional(readOnly = true)
-    public ReceivableDTO getReceivableById(Long id) {
+    public ReceivableDTO getReceivableById(UUID id) { // <<<--- UUID
         log.debug("Fetching receivable by ID: {}", id);
-        return receivableRepository.findById(id)
+        return receivableRepository.findById(id) // <<<--- Use findById with UUID
                 .map(receivableConverter::entityToDTO)
-                .orElseThrow(() -> new ResourceNotFoundException("Receivable not found with ID: " + id));
+                .orElseThrow(() -> {
+                    log.warn("Receivable not found with ID: {}", id);
+                    return new ResourceNotFoundException("Receivable not found with ID: " + id);
+                });
     }
 
     /**
@@ -78,12 +85,14 @@ public class ReceivableService {
     @Transactional(readOnly = true)
     public List<ReceivableDTO> getAllReceivables() {
         log.debug("Fetching all receivables.");
-        return receivableRepository.findAll().stream()
+        List<ReceivableEntity> entities = receivableRepository.findAll();
+        log.info("Retrieved {} receivable entities.", entities.size());
+        return entities.stream()
                 .map(receivableConverter::entityToDTO)
                 .collect(Collectors.toList());
     }
 
-     /**
+    /**
      * Retrieves receivables filtered by status.
      * Recupera contas a receber filtradas por status.
      * @param status The status to filter by. / O status para filtrar.
@@ -92,37 +101,43 @@ public class ReceivableService {
     @Transactional(readOnly = true)
     public List<ReceivableDTO> getReceivablesByStatus(ReceivableStatus status) {
         log.debug("Fetching receivables by status: {}", status);
-        // --- CORRECTED IMPLEMENTATION / IMPLEMENTAÇÃO CORRIGIDA ---
-        List<ReceivableEntity> entities = receivableRepository.findByStatus(status); // Use repository method
+        List<ReceivableEntity> entities = receivableRepository.findByStatus(status);
+        log.info("Retrieved {} receivable entities with status {}", entities.size(), status);
         return entities.stream()
                 .map(receivableConverter::entityToDTO)
                 .collect(Collectors.toList());
     }
 
-     /**
-     * Retrieves overdue receivables (due date is past and not fully paid/canceled/written off).
-     * Recupera contas a receber atrasadas (data de vencimento passou e não totalmente pagas/canceladas/baixadas).
+    /**
+     * Retrieves overdue receivables (due date is past and not fully settled).
+     * Recupera contas a receber atrasadas (data de vencimento passou e não totalmente quitadas/canceladas/baixadas).
      * @return List of overdue ReceivableDTOs. / Lista de ReceivableDTOs atrasados.
      */
     @Transactional(readOnly = true)
     public List<ReceivableDTO> getOverdueReceivables() {
         log.debug("Fetching overdue receivables.");
         LocalDate today = LocalDate.now();
-        List<ReceivableStatus> excludedStatuses = List.of(ReceivableStatus.RECEIVED, ReceivableStatus.WRITTEN_OFF, ReceivableStatus.CANCELED);
-        List<ReceivableEntity> overdueEntities = receivableRepository.findByDueDateBeforeAndStatusNotIn(today, excludedStatuses);
+        List<ReceivableStatus> settledStatuses = List.of(
+                ReceivableStatus.RECEIVED,      // Totalmente recebido
+                ReceivableStatus.WRITTEN_OFF,   // Baixado (incobrável)
+                ReceivableStatus.CANCELED       // Cancelado
+        );
+        List<ReceivableEntity> overdueEntities = receivableRepository.findByDueDateBeforeAndStatusNotIn(today, settledStatuses);
+        log.info("Retrieved {} overdue receivable entities.", overdueEntities.size());
         return overdueEntities.stream()
                 .map(receivableConverter::entityToDTO)
                 .collect(Collectors.toList());
     }
 
     /**
-     * Retrieves receivables that have a non-empty blocker reason set.
-     * Recupera contas a receber que têm um motivo de bloqueio não vazio definido.
+     * Retrieves receivables that have a non-null and non-empty blocker reason set.
+     * Recupera contas a receber que têm um motivo de bloqueio não nulo e não vazio definido.
      */
     @Transactional(readOnly = true)
     public List<ReceivableDTO> getBlockedReceivables() {
         log.debug("Fetching receivables with blockers.");
-        List<ReceivableEntity> blockedEntities = receivableRepository.findWithBlockers(); // Use repository method
+        List<ReceivableEntity> blockedEntities = receivableRepository.findWithBlockers(); // Use default repository method
+        log.info("Retrieved {} receivable entities with blockers.", blockedEntities.size());
         return blockedEntities.stream()
                 .map(receivableConverter::entityToDTO)
                 .collect(Collectors.toList());
@@ -130,25 +145,28 @@ public class ReceivableService {
 
 
     /**
-     * Updates an existing receivable record.
-     * Atualiza um registro de conta a receber existente.
-     * @param id The ID of the receivable to update. / O ID da conta a receber a ser atualizada.
-     * @param receivableDTO DTO containing updated data. / DTO contendo dados atualizados.
+     * Updates an existing receivable record identified by its UUID.
+     * Atualiza um registro de conta a receber existente identificado por seu UUID.
+     * @param id The UUID of the receivable to update. / O UUID da conta a receber a ser atualizada.
+     * @param receivableDTO DTO containing updated data. ID in DTO is ignored. / DTO contendo dados atualizados. ID no DTO é ignorado.
      * @return The updated ReceivableDTO. / O ReceivableDTO atualizado.
      * @throws ResourceNotFoundException if the receivable is not found. / Se a conta a receber não for encontrada.
      */
-    public ReceivableDTO updateReceivable(Long id, ReceivableDTO receivableDTO) {
+    public ReceivableDTO updateReceivable(UUID id, ReceivableDTO receivableDTO) { // <<<--- UUID
         log.info("Updating receivable with ID: {}", id);
-        ReceivableEntity existingReceivable = receivableRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Receivable not found with ID: " + id));
+        ReceivableEntity existingReceivable = receivableRepository.findById(id) // <<<--- Use findById with UUID
+                .orElseThrow(() -> {
+                    log.warn("Update failed: Receivable not found with ID: {}", id);
+                    return new ResourceNotFoundException("Receivable not found with ID: " + id);
+                });
 
         // Basic validation (could be expanded)
         if (receivableDTO.getClientId() == null || receivableDTO.getProjectId() == null) {
-             throw new IllegalArgumentException("Client ID and Project ID cannot be null for update.");
+            throw new IllegalArgumentException("Client ID and Project ID cannot be null for update.");
         }
 
         // Update fields from DTO
-        existingReceivable.setClientId(receivableDTO.getClientId());
+        existingReceivable.setClientId(receivableDTO.getClientId()); // <<<--- Update client UUID
         existingReceivable.setProjectId(receivableDTO.getProjectId());
         existingReceivable.setDescription(receivableDTO.getDescription());
         existingReceivable.setInvoiceReference(receivableDTO.getInvoiceReference());
@@ -159,6 +177,7 @@ public class ReceivableService {
         existingReceivable.setAmountReceived(receivableDTO.getAmountReceived() != null ? receivableDTO.getAmountReceived() : BigDecimal.ZERO);
         existingReceivable.setStatus(receivableDTO.getStatus());
         existingReceivable.setBlockerReason(receivableDTO.getBlockerReason());
+        // Handle document references update if needed, might require comparison logic
         existingReceivable.setDocumentReferences(receivableDTO.getDocumentReferences() != null ? new ArrayList<>(receivableDTO.getDocumentReferences()) : new ArrayList<>());
 
         ReceivableEntity updatedEntity = receivableRepository.save(existingReceivable);
@@ -167,9 +186,9 @@ public class ReceivableService {
     }
 
     /**
-     * Partially updates the status, received details, and blocker reason of a receivable.
-     * Atualiza parcialmente o status, detalhes de recebimento e motivo de bloqueio de uma conta a receber.
-     * @param id The ID of the receivable to update. / O ID da conta a receber a ser atualizada.
+     * Partially updates the status, received details, and blocker reason of a receivable by its UUID.
+     * Atualiza parcialmente o status, detalhes de recebimento e motivo de bloqueio de uma conta a receber por seu UUID.
+     * @param id The UUID of the receivable to update. / O UUID da conta a receber a ser atualizada.
      * @param newStatus The new status. / O novo status.
      * @param receivedDate The date the payment was received (if applicable). / A data do recebimento (se aplicável).
      * @param amountReceived The total amount received to date (if applicable). / O valor total recebido até a data (se aplicável).
@@ -177,25 +196,39 @@ public class ReceivableService {
      * @return The updated ReceivableDTO. / O ReceivableDTO atualizado.
      * @throws ResourceNotFoundException if the receivable is not found. / Se a conta a receber não for encontrada.
      */
-    public ReceivableDTO updateReceivableStatus(Long id, ReceivableStatus newStatus, LocalDate receivedDate, BigDecimal amountReceived, String blockerReason) {
+    public ReceivableDTO updateReceivableStatus(UUID id, ReceivableStatus newStatus, LocalDate receivedDate, BigDecimal amountReceived, String blockerReason) { // <<<--- UUID
         log.info("Updating status/details for receivable ID: {} to Status: {}, ReceivedDate: {}, AmountReceived: {}, Blocker: '{}'",
-                 id, newStatus, receivedDate, amountReceived, blockerReason);
-        ReceivableEntity receivable = receivableRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Receivable not found with ID: " + id));
+                id, newStatus, receivedDate, amountReceived, blockerReason);
+        ReceivableEntity receivable = receivableRepository.findById(id) // <<<--- Use findById with UUID
+                .orElseThrow(() -> {
+                    log.warn("Status update failed: Receivable not found with ID: {}", id);
+                    return new ResourceNotFoundException("Receivable not found with ID: " + id);
+                });
 
+        // Apply updates selectively
         receivable.setStatus(newStatus);
+
         if (receivedDate != null) {
             receivable.setReceivedDate(receivedDate);
+            log.debug("Set receivedDate for receivable ID {} to {}", id, receivedDate);
         }
-        if (amountReceived != null) {
-             // Assume amountReceived in request sets the *total* amount received
-             receivable.setAmountReceived(amountReceived);
-             log.debug("Updated amount received for receivable ID {} to {}", id, amountReceived);
-        }
-        // Allow setting or clearing the blocker reason
-        receivable.setBlockerReason(blockerReason);
-        log.debug("Updated blocker reason for receivable ID {} to: '{}'", id, blockerReason);
 
+        if (amountReceived != null) {
+            // Typically, this sets the *total* amount received.
+            // Add logic here if it represents an *additional* amount received.
+            receivable.setAmountReceived(amountReceived);
+            log.debug("Set amountReceived for receivable ID {} to {}", id, amountReceived);
+        }
+
+        // Allow setting or clearing the blocker reason
+        // Use null check to avoid setting null explicitly if not provided, unless clearing is intended
+        if (blockerReason != null) { // Check if parameter was provided
+            receivable.setBlockerReason(blockerReason.isBlank() ? null : blockerReason); // Set to null if blank, otherwise set value
+            log.debug("Updated blockerReason for receivable ID {} to: '{}'", id, receivable.getBlockerReason());
+        }
+
+        // Optional: Add logic to automatically update status based on amounts/dates if needed
+        // Example: if (receivable.getAmountReceived().compareTo(receivable.getAmountExpected()) >= 0) { receivable.setStatus(ReceivableStatus.RECEIVED); }
 
         ReceivableEntity updatedEntity = receivableRepository.save(receivable);
         log.info("Receivable status/details updated successfully for ID: {}", id);
@@ -203,126 +236,140 @@ public class ReceivableService {
     }
 
     /**
-     * Deletes a receivable record by its ID.
-     * Deleta um registro de conta a receber pelo seu ID.
-     * @param id The ID of the receivable to delete. / O ID da conta a receber a ser deletada.
+     * Deletes a receivable record by its UUID.
+     * Deleta um registro de conta a receber pelo seu UUID.
+     * @param id The UUID of the receivable to delete. / O UUID da conta a receber a ser deletada.
      * @throws ResourceNotFoundException if the receivable is not found. / Se a conta a receber não for encontrada.
      */
-    public void deleteReceivable(Long id) {
-        log.info("Deleting receivable with ID: {}", id);
-        if (!receivableRepository.existsById(id)) {
+    public void deleteReceivable(UUID id) { // <<<--- UUID
+        log.info("Attempting to delete receivable with ID: {}", id);
+        if (!receivableRepository.existsById(id)) { // <<<--- Use existsById with UUID
+            log.warn("Delete failed: Receivable not found with ID: {}", id);
             throw new ResourceNotFoundException("Receivable not found with ID: " + id);
         }
         // Add dependency checks here if needed (e.g., link to contracts)
         // Adicione verificações de dependência aqui se necessário (ex: link para contratos)
-        receivableRepository.deleteById(id);
+        receivableRepository.deleteById(id); // <<<--- Use deleteById with UUID
         log.info("Receivable deleted successfully with ID: {}", id);
     }
 
     // --- Methods for Financial Recovery Focus ---
 
     /**
-     * Calculates the total amount pending reception (Expected - Received), excluding non-collectible statuses.
-     * Calcula o valor total pendente de recebimento (Esperado - Recebido), excluindo status não cobráveis.
+     * Calculates the total amount pending reception (Expected - Received), excluding non-collectible/canceled statuses.
+     * Calcula o valor total pendente de recebimento (Esperado - Recebido), excluindo status não cobráveis/cancelados.
      * @return Total pending amount. / Valor total pendente.
      */
     @Transactional(readOnly = true)
     public BigDecimal getTotalPendingAmount() {
         log.debug("Calculating total pending receivable amount.");
-        List<ReceivableStatus> activeStatuses = List.of(ReceivableStatus.PENDING, ReceivableStatus.OVERDUE, ReceivableStatus.PARTIALLY_RECEIVED, ReceivableStatus.IN_DISPUTE);
-        List<ReceivableEntity> pendingReceivables = receivableRepository.findAll().stream()
+        List<ReceivableStatus> activeStatuses = List.of(
+                ReceivableStatus.PENDING,
+                ReceivableStatus.OVERDUE,
+                ReceivableStatus.PARTIALLY_RECEIVED,
+                ReceivableStatus.IN_DISPUTE
+        );
+        // Optimization: Could use a custom repository query to sum in the DB
+        List<ReceivableEntity> activeReceivables = receivableRepository.findAll().stream()
                 .filter(r -> activeStatuses.contains(r.getStatus()))
                 .toList();
 
-        BigDecimal totalPending = pendingReceivables.stream()
+        BigDecimal totalPending = activeReceivables.stream()
+                // Calculate remaining amount for each: Expected - Received (handle null Received)
                 .map(r -> r.getAmountExpected().subtract(r.getAmountReceived() != null ? r.getAmountReceived() : BigDecimal.ZERO))
+                // Ensure we don't sum negative balances if overpayments are possible but not desired here
+                .filter(balance -> balance.compareTo(BigDecimal.ZERO) > 0)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         log.debug("Total pending receivable amount calculated: {}", totalPending);
         return totalPending;
     }
 
     /**
-     * Calculates the total amount overdue (Expected - Received for overdue items).
-     * Calcula o valor total atrasado (Esperado - Recebido para itens atrasados).
+     * Calculates the total amount overdue (Remaining amount for overdue items).
+     * Calcula o valor total atrasado (Valor restante para itens atrasados).
      * @return Total overdue amount. / Valor total atrasado.
      */
     @Transactional(readOnly = true)
     public BigDecimal getTotalOverdueAmount() {
-         log.debug("Calculating total overdue receivable amount.");
-         List<ReceivableEntity> overdueEntities = getOverdueReceivables().stream() // Reuse DTO list logic
-                 .map(receivableConverter::dtoToEntity) // Convert back to entity for calculation
-                 .toList();
+        log.debug("Calculating total overdue receivable amount.");
+        // Reuse the logic to get overdue entities
+        List<ReceivableEntity> overdueEntities = receivableRepository.findByDueDateBeforeAndStatusNotIn(
+                LocalDate.now(),
+                List.of(ReceivableStatus.RECEIVED, ReceivableStatus.WRITTEN_OFF, ReceivableStatus.CANCELED)
+        );
 
         BigDecimal totalOverdue = overdueEntities.stream()
                 .map(r -> r.getAmountExpected().subtract(r.getAmountReceived() != null ? r.getAmountReceived() : BigDecimal.ZERO))
+                .filter(balance -> balance.compareTo(BigDecimal.ZERO) > 0) // Only sum positive remaining balances
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         log.debug("Total overdue receivable amount calculated: {}", totalOverdue);
         return totalOverdue;
     }
 
-    // --- STUB Methods for Document Management (to be implemented later) ---
-    // --- Métodos STUB para Gerenciamento de Documentos (a serem implementados depois) ---
+    // --- STUB Methods for Document Management (Updated Signatures) ---
 
     /**
-     * STUB - Adds a document reference to a receivable (future implementation).
-     * STUB - Adiciona uma referência de documento a uma conta a receber (implementação futura).
+     * STUB - Adds a document reference to a receivable by its UUID.
+     * STUB - Adiciona uma referência de documento a uma conta a receber por seu UUID.
      */
-    public String addDocumentReference(Long receivableId, MultipartFile file) {
-         log.warn("STUB METHOD: addDocumentReference called for receivable ID {} and file {}", receivableId, file.getOriginalFilename());
-         // 1. Find ReceivableEntity or throw ResourceNotFoundException
-         ReceivableEntity receivable = receivableRepository.findById(receivableId)
-                 .orElseThrow(() -> new ResourceNotFoundException("Receivable not found with ID: " + receivableId));
-         // 2. Call DocumentStorageService via Feign Client to upload file
-         // String documentIdOrUrl = documentStorageClient.upload(file); // Fictional call
-         String documentIdOrUrl = "stubbed_ref_" + file.getOriginalFilename() + "_" + System.nanoTime();
-         // 3. Add the reference to the entity's list
-         if (receivable.getDocumentReferences() == null) {
-             receivable.setDocumentReferences(new ArrayList<>());
-         }
-         receivable.getDocumentReferences().add(documentIdOrUrl);
-         // 4. Save the updated entity
-         receivableRepository.save(receivable);
-         log.info("STUB: Added document reference '{}' to receivable {}", documentIdOrUrl, receivableId);
-         return documentIdOrUrl;
+    public String addDocumentReference(UUID receivableId, MultipartFile file) { // <<<--- UUID
+        log.warn("STUB METHOD: addDocumentReference called for receivable ID {} and file {}", receivableId, file.getOriginalFilename());
+        // 1. Find ReceivableEntity or throw ResourceNotFoundException
+        ReceivableEntity receivable = receivableRepository.findById(receivableId) // <<<--- Use findById with UUID
+                .orElseThrow(() -> new ResourceNotFoundException("Receivable not found with ID: " + receivableId));
+        // 2. Call DocumentStorageService via Feign Client to upload file (Example)
+        // String documentIdOrUrl = documentStorageClient.upload(file);
+        String documentIdOrUrl = "stubbed_receivable_ref_" + file.getOriginalFilename() + "_" + System.nanoTime();
+        // 3. Add the reference to the entity's list
+        if (receivable.getDocumentReferences() == null) {
+            receivable.setDocumentReferences(new ArrayList<>());
+        }
+        receivable.getDocumentReferences().add(documentIdOrUrl);
+        // 4. Save the updated entity
+        receivableRepository.save(receivable);
+        log.info("STUB: Added document reference '{}' to receivable {}", documentIdOrUrl, receivableId);
+        return documentIdOrUrl;
     }
 
     /**
-     * STUB - Deletes a document reference from a receivable (future implementation).
-     * STUB - Deleta uma referência de documento de uma conta a receber (implementação futura).
+     * STUB - Deletes a document reference from a receivable by its UUID.
+     * STUB - Deleta uma referência de documento de uma conta a receber por seu UUID.
      */
-     public void deleteDocumentReference(Long receivableId, String documentReference) {
-          log.warn("STUB METHOD: deleteDocumentReference called for receivable ID {} and reference {}", receivableId, documentReference);
-         // 1. Find ReceivableEntity or throw ResourceNotFoundException
-         ReceivableEntity receivable = receivableRepository.findById(receivableId)
-                 .orElseThrow(() -> new ResourceNotFoundException("Receivable not found with ID: " + receivableId));
-         // 2. Remove the reference from the list
-         boolean removed = false;
-         if (receivable.getDocumentReferences() != null) {
-             removed = receivable.getDocumentReferences().remove(documentReference);
-         }
-         // 3. If removed, save the entity
-         if (removed) {
-             receivableRepository.save(receivable);
-             log.info("STUB: Removed document reference '{}' from receivable {}", documentReference, receivableId);
-             // 4. Optionally, call DocumentStorageService via Feign Client to delete the actual file
-             // documentStorageClient.delete(documentReference); // Fictional call
-         } else {
-              log.warn("Document reference '{}' not found on receivable {}", documentReference, receivableId);
-             // Optionally throw an exception if the reference must exist to be deleted
-             // throw new ResourceNotFoundException("Document reference '" + documentReference + "' not found for receivable ID: " + receivableId);
-         }
+    public void deleteDocumentReference(UUID receivableId, String documentReference) { // <<<--- UUID
+        log.warn("STUB METHOD: deleteDocumentReference called for receivable ID {} and reference {}", receivableId, documentReference);
+        // 1. Find ReceivableEntity or throw ResourceNotFoundException
+        ReceivableEntity receivable = receivableRepository.findById(receivableId) // <<<--- Use findById with UUID
+                .orElseThrow(() -> new ResourceNotFoundException("Receivable not found with ID: " + receivableId));
+        // 2. Remove the reference from the list
+        boolean removed = false;
+        if (receivable.getDocumentReferences() != null) {
+            removed = receivable.getDocumentReferences().remove(documentReference);
+        }
+        // 3. If removed, save the entity
+        if (removed) {
+            receivableRepository.save(receivable);
+            log.info("STUB: Removed document reference '{}' from receivable {}", documentReference, receivableId);
+            // 4. Optionally, call DocumentStorageService via Feign Client to delete the actual file
+            // documentStorageClient.delete(documentReference);
+        } else {
+            log.warn("Document reference '{}' not found on receivable {}", documentReference, receivableId);
+            // Optionally throw an exception
+            // throw new ResourceNotFoundException("Document reference '" + documentReference + "' not found for receivable ID: " + receivableId);
+        }
     }
 
-     /**
-     * STUB - Gets document references for a receivable.
-     * STUB - Obtém referências de documentos para uma conta a receber.
+    /**
+     * STUB - Gets document references for a receivable by its UUID.
+     * STUB - Obtém referências de documentos para uma conta a receber por seu UUID.
      */
-     @Transactional(readOnly = true)
-     public List<String> getDocumentReferences(Long receivableId) {
-         log.warn("STUB METHOD: getDocumentReferences called for receivable ID {}", receivableId);
-         ReceivableEntity receivable = receivableRepository.findById(receivableId)
-                 .orElseThrow(() -> new ResourceNotFoundException("Receivable not found with ID: " + receivableId));
-          return receivable.getDocumentReferences() != null ? new ArrayList<>(receivable.getDocumentReferences()) : new ArrayList<>();
-     }
+    @Transactional(readOnly = true)
+    public List<String> getDocumentReferences(UUID receivableId) { // <<<--- UUID
+        log.warn("STUB METHOD: getDocumentReferences called for receivable ID {}", receivableId);
+        ReceivableEntity receivable = receivableRepository.findById(receivableId) // <<<--- Use findById with UUID
+                .orElseThrow(() -> new ResourceNotFoundException("Receivable not found with ID: " + receivableId));
+        return receivable.getDocumentReferences() != null ? new ArrayList<>(receivable.getDocumentReferences()) : new ArrayList<>();
+    }
 
 }

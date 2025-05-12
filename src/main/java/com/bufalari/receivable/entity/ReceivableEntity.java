@@ -1,4 +1,3 @@
-// Path: src/main/java/com/bufalari/receivable/entity/ReceivableEntity.java
 package com.bufalari.receivable.entity;
 
 import com.bufalari.receivable.auditing.AuditableBaseEntity;
@@ -6,6 +5,7 @@ import com.bufalari.receivable.enums.ReceivableStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
+import org.hibernate.annotations.GenericGenerator; // Import for UUID generator
 import org.slf4j.Logger; // Import Logger
 import org.slf4j.LoggerFactory; // Import LoggerFactory
 
@@ -13,11 +13,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects; // Import Objects
 import java.util.UUID; // Import UUID
 
 /**
- * Represents an account receivable (an amount owed by a client).
- * Representa uma conta a receber (um valor devido por um cliente).
+ * Represents an account receivable (an amount owed by a client). Uses UUID for ID and ClientID.
+ * Representa uma conta a receber (um valor devido por um cliente). Usa UUID para ID e ClientID.
  */
 @Entity
 @Getter
@@ -25,14 +26,24 @@ import java.util.UUID; // Import UUID
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Table(name = "receivables")
+@Table(name = "receivables", indexes = { // Add relevant indexes
+        @Index(name = "idx_receivable_client_id", columnList = "clientId"),
+        @Index(name = "idx_receivable_project_id", columnList = "project_id"),
+        @Index(name = "idx_receivable_status", columnList = "status"),
+        @Index(name = "idx_receivable_due_date", columnList = "dueDate")
+})
 public class ReceivableEntity extends AuditableBaseEntity {
 
     private static final Logger log = LoggerFactory.getLogger(ReceivableEntity.class); // Logger instance
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(generator = "UUID")
+    @GenericGenerator(
+            name = "UUID",
+            strategy = "org.hibernate.id.UUIDGenerator"
+    )
+    @Column(name = "id", updatable = false, nullable = false, columnDefinition = "uuid") // Specify DB type
+    private UUID id; // <<<--- UUID Type
 
     /**
      * Identifier of the client this receivable is due from.
@@ -41,8 +52,8 @@ public class ReceivableEntity extends AuditableBaseEntity {
      * Liga ao client-service (assumindo que IDs de cliente são UUIDs).
      */
     @NotNull
-    @Column(nullable = false)
-    private UUID clientId;
+    @Column(nullable = false, columnDefinition = "uuid") // Specify DB type
+    private UUID clientId; // <<<--- Changed to UUID
 
     /**
      * Identifier of the project this receivable relates to.
@@ -52,7 +63,7 @@ public class ReceivableEntity extends AuditableBaseEntity {
      */
     @NotNull
     @Column(name = "project_id", nullable = false)
-    private Long projectId;
+    private Long projectId; // Remains Long
 
     /**
      * Description of the receivable item or service rendered (e.g., "Invoice #INV-123 - Phase 1 Payment").
@@ -141,10 +152,27 @@ public class ReceivableEntity extends AuditableBaseEntity {
     @PrePersist
     private void setDefaults() {
         if (status == null) {
-            status = ReceivableStatus.PENDING;
+            status = ReceivableStatus.PENDING; // Default to PENDING
+            log.debug("Receivable ID {} initial status set to PENDING on persist.", this.id);
         }
         if (amountReceived == null) {
-            amountReceived = BigDecimal.ZERO;
+            amountReceived = BigDecimal.ZERO; // Default to 0 if not provided
+            log.debug("Receivable ID {} amountReceived set to ZERO on persist.", this.id);
         }
+        // Consider adding @PreUpdate logic if status needs automatic updates based on dates/amounts
+    }
+
+    // --- equals() and hashCode() based on ID ---
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        ReceivableEntity that = (ReceivableEntity) o;
+        return id != null ? id.equals(that.id) : super.equals(o);
+    }
+
+    @Override
+    public int hashCode() {
+        return id != null ? Objects.hash(id) : super.hashCode();
     }
 }
