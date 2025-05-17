@@ -37,7 +37,7 @@ import java.util.UUID; // <<<--- IMPORT UUID
  * Controlador REST para gerenciamento de contas a receber.
  */
 @RestController
-@RequestMapping("/api/receivables")
+@RequestMapping("/accounts-receivable")
 @RequiredArgsConstructor
 @Tag(name = "Accounts Receivable", description = "Endpoints for managing accounts receivable / Endpoints para gerenciamento de contas a receber")
 @SecurityRequirement(name = "bearerAuth") // Assume security is applied globally
