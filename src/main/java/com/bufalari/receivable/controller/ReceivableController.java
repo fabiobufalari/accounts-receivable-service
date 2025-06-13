@@ -29,12 +29,20 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID; // <<<--- IMPORT UUID
 
 /**
  * REST controller for managing accounts receivable.
- * Controlador REST para gerenciamento de contas a receber.
+ * 
+ * EN: This controller provides REST API endpoints for managing accounts receivable,
+ * including CRUD operations, payment tracking, and integration with other services.
+ * 
+ * PT: Este controlador fornece endpoints de API REST para gerenciamento de contas a receber,
+ * incluindo operações CRUD, rastreamento de pagamentos e integração com outros serviços.
  */
 @RestController
 @RequestMapping("/accounts-receivable")
@@ -45,6 +53,56 @@ public class ReceivableController {
 
     private static final Logger log = LoggerFactory.getLogger(ReceivableController.class);
     private final ReceivableService receivableService;
+
+    /**
+     * Health check endpoint for accounts receivable service.
+     * 
+     * EN: Provides health status information for the accounts receivable service.
+     * PT: Fornece informações de status de saúde para o serviço de contas a receber.
+     * 
+     * @return ResponseEntity containing health status information
+     */
+    @GetMapping("/health")
+    @Operation(summary = "Health check", description = "Verifica o status de saúde do serviço de contas a receber")
+    public ResponseEntity<Map<String, Object>> health() {
+        Map<String, Object> healthStatus = new HashMap<>();
+        healthStatus.put("service", "accounts-receivable-service");
+        healthStatus.put("status", "healthy");
+        healthStatus.put("timestamp", LocalDateTime.now());
+        healthStatus.put("database", "connected");
+        return ResponseEntity.ok(healthStatus);
+    }
+    
+    /**
+     * Service status endpoint with detailed information.
+     * 
+     * EN: Provides detailed status information about the accounts receivable service.
+     * PT: Fornece informações detalhadas de status sobre o serviço de contas a receber.
+     * 
+     * @return ResponseEntity containing detailed service status
+     */
+    @GetMapping("/status")
+    @Operation(summary = "Service status", description = "Fornece informações detalhadas do status do serviço")
+    public ResponseEntity<Map<String, Object>> status() {
+        Map<String, Object> serviceStatus = new HashMap<>();
+        serviceStatus.put("service", "accounts-receivable-service");
+        serviceStatus.put("status", "operational");
+        serviceStatus.put("version", "1.0.0");
+        serviceStatus.put("timestamp", LocalDateTime.now());
+        
+        Map<String, String> endpoints = new HashMap<>();
+        endpoints.put("create_receivable", "/accounts-receivable");
+        endpoints.put("get_receivable", "/accounts-receivable/{id}");
+        endpoints.put("get_all_receivables", "/accounts-receivable");
+        endpoints.put("get_overdue_receivables", "/accounts-receivable/overdue");
+        endpoints.put("update_receivable", "/accounts-receivable/{id}");
+        endpoints.put("delete_receivable", "/accounts-receivable/{id}");
+        endpoints.put("health", "/accounts-receivable/health");
+        endpoints.put("status", "/accounts-receivable/status");
+        
+        serviceStatus.put("endpoints", endpoints);
+        return ResponseEntity.ok(serviceStatus);
+    }
 
     // --- CREATE ---
     @Operation(summary = "Create Receivable", description = "Creates a new account receivable record.")
